@@ -208,6 +208,34 @@ export async function getWorkout(id) {
   });
 }
 
+// Get workout for a specific date
+export async function getWorkoutForDate(date) {
+  const db = await getDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORES.WORKOUTS], 'readonly');
+    const store = transaction.objectStore(STORES.WORKOUTS);
+    const index = store.index('date');
+    
+    // Format date to YYYY-MM-DD for comparison
+    const dateString = date.toISOString().split('T')[0];
+    
+    // Use a range to match the date portion
+    const startRange = dateString + "T00:00:00.000Z";
+    const endRange = dateString + "T23:59:59.999Z";
+    const range = IDBKeyRange.bound(startRange, endRange);
+    
+    const request = index.get(range);
+    
+    request.onsuccess = (event) => {
+      resolve(event.target.result || null);
+    };
+    
+    request.onerror = (event) => {
+      reject(new Error('Error getting workout for date'));
+    };
+  });
+}
+
 // Get exercises for a specific workout
 export async function getExercisesByWorkout(workoutId) {
   const db = await getDatabase();
@@ -228,7 +256,7 @@ export async function getExercisesByWorkout(workoutId) {
 }
 
 // Save progress for an exercise
-export async function saveProgress(exerciseId, weight, reps, notes = '') {
+export async function saveProgress(exerciseId, weight, reps, notes = '', date = new Date()) {
   const db = await getDatabase();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([STORES.PROGRESS], 'readwrite');
@@ -239,7 +267,7 @@ export async function saveProgress(exerciseId, weight, reps, notes = '') {
       weight,
       reps,
       notes,
-      date: new Date().toISOString()
+      date: date.toISOString()
     };
     
     const request = store.add(progressData);
