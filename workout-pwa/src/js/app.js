@@ -1,182 +1,168 @@
-/**
- * Main application file for workout tracker PWA
- */
+import * as FileProcessor from './modules/file-processor.js';
+import * as DB from './modules/db.js';
+import * as UI from './modules/ui.js';
 
-import { processFile, formatWorkoutData } from './modules/file-processor.js';
-import { 
-  saveWorkout, 
-  saveExercises, 
-  getMostRecentWorkout, 
-  getExercisesByWorkout,
-  saveProgress,
-  getProgressHistory
-} from './modules/db.js';
-import { initUI, showError, showLoading, renderWorkout } from './modules/ui.js';
+// Global state
+window.currentWorkout = null;
 
-// Current workout data
-let currentWorkout = null;
+// Store the uploaded file for sheet selection
+let currentUploadedFile = null;
 
 /**
- * Initialize the application
+ * Handle file upload event
+ * @param {Event} event - File upload event
  */
-async function init() {
-  console.log('Initializing workout tracker app');
-  
-  // Initialize UI
-  initUI();
-  
-  // Set up global handlers for UI module
-  window.handleFileUpload = handleFileUpload;
-  window.loadPreviousWorkout = loadPreviousWorkout;
-  window.saveExerciseProgress = saveExerciseProgress;
-  
-  // Load previous workout if available
-  await loadPreviousWorkout();
-}
-
-/**
- * Handle file upload
- * @param {Event} e - File input change event
- */
-async function handleFileUpload(e) {
-  const file = e.target.files[0];
+export async function handleFileUpload(event) {
+  const file = event.target.files[0];
   if (!file) return;
   
-  // Show loading state
-  showLoading(true);
-  
+  // Store the file for later use if sheet selection is needed
+  currentUploadedFile = file;
+
   try {
-    // Process the file
-    const workoutData = await processFile(file);
+    UI.showLoading(true);
     
-    // Format the data for display
-    const formattedData = formatWorkoutData(workoutData);
+    // Process the uploaded file
+    const result = await FileProcessor.processFile(file);
     
-    // Save to database
-    const workoutId = await saveWorkout({
-      name: formattedData.title,
-      phase: formattedData.phase,
-      data: formattedData
-    });
+    // Check if we need to handle multiple sheets
+    if (result.type === 'multiple_sheets') {
+      // Show sheet selection UI with previews
+      UI.showSheetSelectorWithPreviews(result.sheetsData);
+      return;
+    }
     
-    // Save exercises
-    const exercises = [];
-    formattedData.days.forEach(day => {
-      day.exercises.forEach(exercise => {
-        exercises.push({
-          name: exercise.name,
-          day: day.name,
-          data: exercise
-        });
-      });
-    });
-    
-    await saveExercises(workoutId, exercises);
-    
-    // Set as current workout
-    currentWorkout = {
-      id: workoutId,
-      data: formattedData
-    };
-    
-    // Render the workout
-    renderWorkout(formattedData);
+    // Process workout data
+    await processWorkoutData(result.data);
     
   } catch (error) {
-    console.error('Error handling file upload:', error);
-    showError(error.message || 'Failed to process workout file');
+    UI.showError(error.message || 'Failed to process workout file');
   } finally {
-    // Hide loading state
-    showLoading(false);
+    UI.showLoading(false);
   }
 }
 
 /**
- * Load the most recent workout from database
+ * Handle sheet selection
+ * @param {string} sheetName - Selected sheet name
  */
-async function loadPreviousWorkout() {
-  try {
-    const workout = await getMostRecentWorkout();
-    
-    if (workout) {
-      // Set as current workout
-      currentWorkout = {
-        id: workout.id,
-        data: workout.data
-      };
-      
-      // Render the workout
-      renderWorkout(workout.data);
-      
-      return true;
-    }
-  } catch (error) {
-    console.error('Error loading previous workout:', error);
+export async function handleSheetSelection(sheetName) {
+  if (!currentUploadedFile) {
+    UI.showError('No file uploaded');
+    return;
   }
   
-  return false;
+  try {
+    UI.showLoading(true);
+    
+    // Process the file with the selected sheet
+    const result = await FileProcessor.processFile(currentUploadedFile, sheetName);
+    
+    // Process workout data
+    await processWorkoutData(result.data);
+    
+  } catch (error) {
+    UI.showError(error.message || 'Failed to process selected sheet');
+  } finally {
+    UI.showLoading(false);
+  }
+}
+
+/**
+ * Process workout data and save to database
+ * @param {Object} rawWorkoutData - Raw workout data
+ */
+async function processWorkoutData(rawWorkoutData) {
+  // Format the workout data
+  const workoutData = FileProcessor.formatWorkoutData(rawWorkoutData);
+  
+  // Save workout to database
+  const workoutId = await DB.saveWorkout({
+    name: workoutData.title,
+    phase: workoutData.phase,
+    data: workoutData
+  });
+  
+  // Save exercises
+  const exercisePromises = workoutData.days.flatMap(day =>
+    day.exercises.map(exercise =>
+      DB.saveExercises(workoutId, [{
+        name: exercise.name,
+        day: day.name,
+        data: exercise
+      }])
+    )
+  );
+  
+  await Promise.all(exercisePromises);
+  
+  // Render workout and update global state
+  UI.renderWorkout(workoutData);
+  window.currentWorkout = { id: workoutId, data: workoutData };
+}
+
+/**
+ * Load the most recent workout
+ * @returns {Promise<boolean>} - Whether a workout was loaded
+ */
+export async function loadPreviousWorkout() {
+  try {
+    const mostRecentWorkout = await DB.getMostRecentWorkout();
+    
+    if (mostRecentWorkout) {
+      UI.renderWorkout(mostRecentWorkout.data);
+      window.currentWorkout = mostRecentWorkout;
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    UI.showError('Failed to load previous workout');
+    return false;
+  }
 }
 
 /**
  * Save exercise progress
  * @param {string} exerciseName - Name of the exercise
  * @param {number} weight - Weight used
- * @param {number} reps - Reps completed
+ * @param {number} reps - Number of reps
  */
-async function saveExerciseProgress(exerciseName, weight, reps) {
-  if (!currentWorkout) {
-    showError('No workout loaded');
+export async function saveExerciseProgress(exerciseName, weight, reps) {
+  if (!window.currentWorkout) {
+    UI.showError('No workout loaded');
     return;
   }
-  
+
   try {
-    // Find the exercise in the current workout
-    const exercises = await getExercisesByWorkout(currentWorkout.id);
-    const exercise = exercises.find(ex => ex.name === exerciseName);
-    
-    if (!exercise) {
-      showError(`Exercise "${exerciseName}" not found`);
-      return;
+    const exercises = await DB.getExercisesByWorkout(window.currentWorkout.id);
+    const matchingExercise = exercises.find(ex => ex.name === exerciseName);
+
+    if (matchingExercise) {
+      await DB.saveProgress(matchingExercise.id, weight, reps);
+    } else {
+      UI.showError(`Exercise ${exerciseName} not found in current workout`);
     }
-    
-    // Save progress
-    await saveProgress(exercise.id, weight, reps);
-    
-    // Show success message
-    const successMessage = document.createElement('div');
-    successMessage.className = 'success-message';
-    successMessage.textContent = `Progress saved for ${exerciseName}`;
-    
-    // Find the exercise element
-    const exerciseElement = document.querySelector(`.exercise-item[data-exercise-name="${exerciseName}"]`);
-    if (exerciseElement) {
-      // Add success message
-      exerciseElement.appendChild(successMessage);
-      
-      // Remove after 3 seconds
-      setTimeout(() => {
-        successMessage.remove();
-      }, 3000);
-    }
-    
   } catch (error) {
-    console.error('Error saving exercise progress:', error);
-    showError('Failed to save progress');
+    UI.showError('Failed to save exercise progress');
   }
 }
 
-// Initialize the app when DOM is loaded
-document.addEventListener('DOMContentLoaded', init);
-
-// Register service worker
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js')
-      .then(registration => {
-        console.log('Service Worker registered with scope:', registration.scope);
-      })
-      .catch(error => {
-        console.error('Service Worker registration failed:', error);
-      });
-  });
+// Initialize app
+export function init() {
+  // Add event listeners
+  document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+  
+  // Try to load previous workout on startup
+  loadPreviousWorkout();
 }
+
+// Expose functions to global scope for event handling
+window.handleFileUpload = handleFileUpload;
+window.handleSheetSelection = handleSheetSelection;
+window.loadPreviousWorkout = loadPreviousWorkout;
+window.saveExerciseProgress = saveExerciseProgress;
+window.init = init;
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', init);

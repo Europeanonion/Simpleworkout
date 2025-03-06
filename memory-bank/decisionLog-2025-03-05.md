@@ -1,65 +1,27 @@
-## 2025-03-05 - PWA Architecture Design Decisions
+## March 5, 2025 - Test Suite Implementation
 
-### Decision 1: Modular Architecture
-**Context:** Need for a scalable and maintainable Progressive Web Application
-**Decision:** Implement a modular architecture with separate concerns
-**Rationale:** 
-- Improves code organization
-- Enhances maintainability
-- Allows easier future extensions
+**Context:** The test suite needed to be fixed to properly mock document methods and browser APIs.
+
+**Decision:** Implement robust test setup with proper mocks for browser APIs.
+
+**Rationale:** Proper mocking is essential for reliable testing of browser-based applications, especially when dealing with IndexedDB and file operations.
+
 **Implementation:** 
-- Created separate modules for:
-  * Database management (db.js)
-  * File processing (file-processor.js)
-  * User interface (ui.js)
-  * Main application logic (app.js)
+- Updated file-processor.test.js with proper mocking strategy
+- Fixed issues with IndexedDB mocking in db.test.js
+- Implemented comprehensive test coverage for all modules
 
-### Decision 2: IndexedDB for Data Storage
-**Context:** Limitations of LocalStorage for workout tracking
-**Decision:** Replace LocalStorage with IndexedDB
-**Rationale:**
-- Higher storage capacity
-- Better performance for complex data
-- Supports more advanced querying
-- Enables more robust offline functionality
-**Implementation:**
-- Developed comprehensive IndexedDB wrapper in db.js
-- Created object stores for workouts, exercises, and progress
-- Implemented methods for saving, retrieving, and managing workout data
+## March 5, 2025 - Excel Multi-Sheet Support
 
-### Decision 3: Offline-First Architecture
-**Context:** Need for reliable workout tracking without constant internet connection
-**Decision:** Implement service worker for comprehensive offline support
-**Rationale:**
-- Ensures app functionality without internet
-- Provides seamless user experience
-- Improves performance through caching
-**Implementation:**
-- Created service-worker.js with:
-  * Asset caching
-  * Fetch event handling
-  * Background sync preparation
+**Context:** The PWA needed to handle Excel files with multiple sheets, as specified in the requirements.
 
-### Decision 4: Mobile-First Responsive Design
-**Context:** Primary target platform is iPhone
-**Decision:** Develop mobile-first CSS with specific iOS optimizations
-**Rationale:**
-- Ensures optimal user experience on mobile devices
-- Handles iPhone-specific design challenges (notches, safe areas)
-- Provides responsive layout across different screen sizes
-**Implementation:**
-- Used CSS env() for safe area insets
-- Created mobile-specific touch target sizes
-- Implemented responsive typography and layout
+**Decision:** Enhance the file-processor.js module to detect and handle Excel files with multiple sheets.
 
-### Decision 5: Minimal External Dependencies
-**Context:** Need for lightweight, performant application
-**Decision:** Minimize external library usage
-**Rationale:**
-- Reduce bundle size
-- Improve load times
-- Minimize potential security vulnerabilities
+**Rationale:** Many workout programs are distributed as Excel files with multiple sheets, each containing different workout phases or variations. Supporting this format improves user experience and broadens compatibility.
+
 **Implementation:**
-- Used vanilla JavaScript
-- Bundled only essential libraries (SheetJS for file parsing)
-- Implemented custom modules instead of using heavy frameworks
+- Modified the processFile function to detect multiple sheets in Excel files
+- Added logic to return sheet names when multiple sheets are detected
+- Implemented sheet selection functionality in the UI
+- Updated Cypress tests to verify multi-sheet Excel file handling
+- Fixed port configuration in package.json and cypress.config.js for consistent testing

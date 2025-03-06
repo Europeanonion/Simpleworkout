@@ -1,8 +1,3 @@
-/**
- * File processor module for workout tracker
- * Handles parsing Excel/CSV files using SheetJS
- */
-
 import * as XLSX from 'xlsx';
 
 /**
@@ -48,9 +43,10 @@ const workoutSchema = {
 /**
  * Process file data from an uploaded file
  * @param {File} file - The uploaded file
- * @returns {Promise<Object>} - Processed workout data
+ * @param {string|null} selectedSheet - Optional sheet name to process (for multi-sheet files)
+ * @returns {Promise<Object|Array>} - Processed workout data or array of sheet names
  */
-export function processFile(file) {
+export function processFile(file, selectedSheet = null) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
@@ -59,12 +55,36 @@ export function processFile(file) {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         
-        // Get the first sheet
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+        // If there are multiple sheets and no sheet is selected, return the sheet names with previews
+        if (workbook.SheetNames.length > 1 && !selectedSheet) {
+          const sheetsData = {};
+          
+          // Generate preview data for each sheet
+          workbook.SheetNames.forEach(sheetName => {
+            const sheet = workbook.Sheets[sheetName];
+            const previewData = getSheetPreviewData(sheet);
+            sheetsData[sheetName] = previewData;
+          });
+          
+          resolve({
+            type: 'multiple_sheets',
+            sheetsData: sheetsData
+          });
+          return;
+        }
+        
+        // Use the selected sheet or default to the first sheet
+        const sheetName = selectedSheet || workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        
+        if (!sheet) {
+          throw new Error(`Sheet "${sheetName}" not found in the workbook`);
+        }
+        
+        const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
         
         if (!jsonData || jsonData.length === 0) {
-          throw new Error('No data found in the file');
+          throw new Error('No data found in the selected sheet');
         }
         
         // Process the data into our workout format
@@ -72,7 +92,12 @@ export function processFile(file) {
         
         // Validate the data
         if (validateWorkoutData(workoutData)) {
-          resolve(workoutData);
+          // Add the sheet name to the workout data for reference
+          workoutData.sheetName = sheetName;
+          resolve({
+            type: 'workout_data',
+            data: workoutData
+          });
         } else {
           reject(new Error('Invalid workout data format'));
         }
@@ -91,14 +116,35 @@ export function processFile(file) {
 }
 
 /**
+ * Get preview data for a sheet (first few rows)
+ * @param {Object} sheet - XLSX sheet object
+ * @returns {Array} - 2D array of preview data
+ */
+function getSheetPreviewData(sheet) {
+  // Convert sheet to JSON with headers
+  const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+  
+  // Return first 5 rows for preview
+  return jsonData.slice(0, 5).map(row => {
+    // Limit to first 5 columns for preview
+    return row.slice(0, 5);
+  });
+}
+
+/**
  * Process raw JSON data into workout format
  * @param {Array} data - Raw data from spreadsheet
  * @returns {Object} - Formatted workout data
  */
 function processWorkoutData(data) {
+  // Trim and clean data rows
+  const cleanData = data.map(row => row.map(cell => 
+    typeof cell === 'string' ? cell.trim() : cell
+  ));
+
   // Extract program info from first rows
-  const programTitle = data[0] && data[0][0] ? data[0][0] : 'My Workout Plan';
-  const phaseInfo = data[1] && data[1][0] ? data[1][0] : '';
+  const programTitle = cleanData[0] && cleanData[0][0] ? cleanData[0][0] : 'My Workout Plan';
+  const phaseInfo = cleanData[1] && cleanData[1][0] ? cleanData[1][0] : '';
   
   // Initialize workout data structure
   const workoutData = {
@@ -111,8 +157,8 @@ function processWorkoutData(data) {
   let currentDay = null;
   
   // Skip header rows (first 3)
-  for (let i = 3; i < data.length; i++) {
-    const row = data[i];
+  for (let i = 3; i < cleanData.length; i++) {
+    const row = cleanData[i];
     if (!row || row.length === 0) continue;
     
     // Check if this is a new workout day
@@ -129,7 +175,7 @@ function processWorkoutData(data) {
     // Add exercise to current day if we have one
     if (currentDay && row[1]) {
       const exercise = {
-        name: row[1],
+        name: row[1] || '',
         warmupSets: row[2] || '',
         workingSets: row[3] || '',
         reps: row[4] || '',

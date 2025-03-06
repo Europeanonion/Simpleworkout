@@ -122,6 +122,137 @@ export function showLoading(isLoading) {
 }
 
 /**
+ * Generate a preview of sheet data
+ * @param {Array} data - Sheet data (first few rows)
+ * @returns {HTMLElement} - Preview element
+ */
+function generateSheetPreview(data) {
+  // Create preview container
+  const previewContainer = document.createElement('div');
+  previewContainer.className = 'sheet-preview';
+  
+  // Create preview table
+  const table = document.createElement('table');
+  table.className = 'preview-table';
+  
+  // Limit to first 5 rows and 5 columns for preview
+  const previewRows = data.slice(0, 5);
+  
+  // Create table rows
+  previewRows.forEach(row => {
+    const tr = document.createElement('tr');
+    
+    // Limit to first 5 columns
+    const previewCols = row.slice(0, 5);
+    
+    previewCols.forEach(cell => {
+      const td = document.createElement('td');
+      td.textContent = cell || '';
+      tr.appendChild(td);
+    });
+    
+    table.appendChild(tr);
+  });
+  
+  previewContainer.appendChild(table);
+  return previewContainer;
+}
+
+/**
+ * Show sheet selector UI with previews
+ * @param {Object} sheetsData - Object with sheet names as keys and preview data as values
+ */
+export function showSheetSelectorWithPreviews(sheetsData) {
+  // Remove any existing sheet selector
+  const existingSelector = document.getElementById('sheet-selection-modal');
+  if (existingSelector) {
+    existingSelector.remove();
+  }
+
+  // Create modal container
+  const modalContainer = document.createElement('div');
+  modalContainer.id = 'sheet-selection-modal';
+  modalContainer.className = 'modal';
+
+  // Create modal content
+  const modalContent = document.createElement('div');
+  modalContent.className = 'modal-content';
+  
+  // Create title
+  const title = document.createElement('h3');
+  title.textContent = 'Select a Sheet';
+  modalContent.appendChild(title);
+
+  // Create sheet options container
+  const optionsContainer = document.createElement('div');
+  optionsContainer.className = 'sheet-options';
+
+  // Create sheet options with previews
+  Object.entries(sheetsData).forEach(([sheetName, previewData]) => {
+    const optionContainer = document.createElement('div');
+    optionContainer.className = 'sheet-option';
+    
+    // Sheet name
+    const nameElement = document.createElement('h4');
+    nameElement.textContent = sheetName;
+    optionContainer.appendChild(nameElement);
+    
+    // Sheet preview
+    const previewElement = generateSheetPreview(previewData);
+    optionContainer.appendChild(previewElement);
+    
+    // Select button
+    const selectButton = document.createElement('button');
+    selectButton.textContent = 'Select This Sheet';
+    selectButton.className = 'select-sheet-button';
+    selectButton.addEventListener('click', () => {
+      // Call the sheet selection handler from app.js
+      if (typeof window.handleSheetSelection === 'function') {
+        window.handleSheetSelection(sheetName);
+      }
+      
+      // Remove the modal
+      modalContainer.remove();
+    });
+    optionContainer.appendChild(selectButton);
+    
+    optionsContainer.appendChild(optionContainer);
+  });
+  
+  modalContent.appendChild(optionsContainer);
+
+  // Add cancel button
+  const cancelButton = document.createElement('button');
+  cancelButton.textContent = 'Cancel';
+  cancelButton.className = 'cancel-button';
+  cancelButton.addEventListener('click', () => {
+    modalContainer.remove();
+  });
+  modalContent.appendChild(cancelButton);
+
+  // Add modal content to container
+  modalContainer.appendChild(modalContent);
+
+  // Add to body
+  document.body.appendChild(modalContainer);
+}
+
+/**
+ * Show sheet selector UI (legacy version without previews)
+ * @param {string[]} sheets - List of sheet names
+ */
+export function showSheetSelector(sheets) {
+  // For backward compatibility, convert to format for preview version
+  const sheetsData = {};
+  sheets.forEach(sheet => {
+    // Empty preview data for legacy version
+    sheetsData[sheet] = [['No preview available']];
+  });
+  
+  showSheetSelectorWithPreviews(sheetsData);
+}
+
+/**
  * Render workout data to the UI
  * @param {Object} workoutData - Processed workout data
  */
