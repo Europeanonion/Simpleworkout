@@ -6,10 +6,12 @@
 // Database configuration
 const DB_NAME = 'WorkoutTrackerDB';
 const DB_VERSION = 1;
-const STORES = {
+export const STORES = {
   WORKOUTS: 'workouts',
   EXERCISES: 'exercises',
-  PROGRESS: 'progress'
+  PROGRESS: 'progress',
+  PROGRAMS: 'programs',
+  PHASES: 'phases'
 };
 
 // Initialize the database
@@ -51,6 +53,57 @@ export function initDatabase() {
     
     request.onerror = (event) => {
       console.error('IndexedDB error:', event.target.error);
+      reject(event.target.error);
+    };
+  });
+}
+
+// Check if stores exist in the database
+export function checkStores(storeNames) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME);
+    
+    request.onsuccess = function(event) {
+      const db = event.target.result;
+      const allExist = storeNames.every(name => db.objectStoreNames.contains(name));
+      db.close();
+      resolve(allExist);
+    };
+    
+    request.onerror = function(event) {
+      reject(event.target.error);
+    };
+  });
+}
+
+// Update database schema
+export function updateSchema(updateCallback) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME);
+    
+    request.onsuccess = function(event) {
+      const db = event.target.result;
+      const currentVersion = db.version;
+      db.close();
+      
+      // Reopen with a higher version to trigger onupgradeneeded
+      const upgradeRequest = indexedDB.open(DB_NAME, currentVersion + 1);
+      
+      upgradeRequest.onupgradeneeded = function(event) {
+        const db = event.target.result;
+        updateCallback(db);
+      };
+      
+      upgradeRequest.onsuccess = function() {
+        resolve();
+      };
+      
+      upgradeRequest.onerror = function(event) {
+        reject(event.target.error);
+      };
+    };
+    
+    request.onerror = function(event) {
       reject(event.target.error);
     };
   });

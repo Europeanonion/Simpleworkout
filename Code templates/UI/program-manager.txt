@@ -1,0 +1,437 @@
+/**
+ * Program Manager module for the Workout Tracker PWA
+ * Handles workout program selection, management, and organization
+ */
+import * as DB from './db.js';
+
+// Store the current selected program
+let currentProgram = null;
+
+/**
+ * Program template with default structure
+ */
+const PROGRAM_TEMPLATE = {
+  id: null,
+  name: '',
+  description: '',
+  level: 'beginner', // beginner, intermediate, advanced
+  type: 'strength', // strength, hypertrophy, endurance, etc.
+  daysPerWeek: 0,
+  phases: [],
+  tags: [],
+  created: '',
+  lastUsed: '',
+  author: 'user'
+};
+
+/**
+ * Phase template with default structure
+ */
+const PHASE_TEMPLATE = {
+  id: null,
+  name: '',
+  description: '',
+  weeks: 0,
+  days: []
+};
+
+/**
+ * Workout day template with default structure
+ */
+const WORKOUT_DAY_TEMPLATE = {
+  id: null,
+  name: '',
+  description: '',
+  exercises: [],
+  tags: []
+};
+
+/**
+ * Initialize program manager
+ * @return {Promise<boolean>} - Whether initialization was successful
+ */
+export async function init() {
+  try {
+    // Load most recent program
+    const mostRecent = await DB.getMostRecentProgram();
+    if (mostRecent) {
+      currentProgram = mostRecent;
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Failed to initialize program manager:', error);
+    return false;
+  }
+}
+
+/**
+ * Get list of available programs
+ * @return {Promise<Array>} - Array of program objects
+ */
+export async function getPrograms() {
+  try {
+    return await DB.getPrograms();
+  } catch (error) {
+    console.error('Failed to get programs:', error);
+    return [];
+  }
+}
+
+/**
+ * Get program by ID
+ * @param {number} programId - Program ID
+ * @return {Promise<Object>} - Program object
+ */
+export async function getProgram(programId) {
+  try {
+    return await DB.getProgram(programId);
+  } catch (error) {
+    console.error(`Failed to get program ${programId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Select a program
+ * @param {number|string} programId - Program ID or name
+ * @return {Promise<Object>} - Selected program
+ */
+export async function selectProgram(programId) {
+  try {
+    let program;
+    
+    if (typeof programId === 'number') {
+      // Get program by ID
+      program = await DB.getProgram(programId);
+    } else {
+      // Get program by name
+      const programs = await DB.getPrograms();
+      program = programs.find(p => p.name === programId);
+    }
+    
+    if (!program) {
+      throw new Error(`Program not found: ${programId}`);
+    }
+    
+    // Update program last used date
+    program.lastUsed = new Date().toISOString();
+    await DB.updateProgram(program);
+    
+    // Set as current program
+    currentProgram = program;
+    
+    return program;
+  } catch (error) {
+    console.error(`Failed to select program ${programId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Get current selected program
+ * @return {Object} - Current program
+ */
+export function getCurrentProgram() {
+  return currentProgram;
+}
+
+/**
+ * Create a new program
+ * @param {Object} programData - Program data
+ * @return {Promise<Object>} - Created program
+ */
+export async function createProgram(programData) {
+  try {
+    // Create program from template
+    const newProgram = {
+      ...PROGRAM_TEMPLATE,
+      ...programData,
+      created: new Date().toISOString(),
+      lastUsed: new Date().toISOString()
+    };
+    
+    // Store in database
+    const programId = await DB.saveProgram(newProgram);
+    newProgram.id = programId;
+    
+    // Set as current program
+    currentProgram = newProgram;
+    
+    return newProgram;
+  } catch (error) {
+    console.error('Failed to create program:', error);
+    return null;
+  }
+}
+
+/**
+ * Update an existing program
+ * @param {Object} programData - Program data with ID
+ * @return {Promise<Object>} - Updated program
+ */
+export async function updateProgram(programData) {
+  try {
+    if (!programData.id) {
+      throw new Error('Program ID is required for updates');
+    }
+    
+    // Get existing program
+    const existingProgram = await DB.getProgram(programData.id);
+    if (!existingProgram) {
+      throw new Error(`Program not found: ${programData.id}`);
+    }
+    
+    // Merge with existing data
+    const updatedProgram = {
+      ...existingProgram,
+      ...programData,
+      lastModified: new Date().toISOString()
+    };
+    
+    // Update in database
+    await DB.updateProgram(updatedProgram);
+    
+    // Update current program if it's the same
+    if (currentProgram && currentProgram.id === updatedProgram.id) {
+      currentProgram = updatedProgram;
+    }
+    
+    return updatedProgram;
+  } catch (error) {
+    console.error(`Failed to update program ${programData.id}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Delete a program
+ * @param {number} programId - Program ID
+ * @return {Promise<boolean>} - Whether deletion was successful
+ */
+export async function deleteProgram(programId) {
+  try {
+    const result = await DB.deleteProgram(programId);
+    
+    // Clear current program if it's the deleted one
+    if (currentProgram && currentProgram.id === programId) {
+      currentProgram = null;
+    }
+    
+    return result;
+  } catch (error) {
+    console.error(`Failed to delete program ${programId}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Add a phase to a program
+ * @param {number} programId - Program ID
+ * @param {Object} phaseData - Phase data
+ * @return {Promise<Object>} - Updated program
+ */
+export async function addPhase(programId, phaseData) {
+  try {
+    // Get program
+    const program = await DB.getProgram(programId);
+    if (!program) {
+      throw new Error(`Program not found: ${programId}`);
+    }
+    
+    // Create phase from template
+    const newPhase = {
+      ...PHASE_TEMPLATE,
+      ...phaseData,
+      id: Date.now() // Use timestamp as temp ID
+    };
+    
+    // Add to program
+    program.phases.push(newPhase);
+    
+    // Update program
+    await DB.updateProgram(program);
+    
+    // Update current program if it's the same
+    if (currentProgram && currentProgram.id === programId) {
+      currentProgram = program;
+    }
+    
+    return program;
+  } catch (error) {
+    console.error(`Failed to add phase to program ${programId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Add a workout day to a phase
+ * @param {number} programId - Program ID
+ * @param {number} phaseId - Phase ID
+ * @param {Object} dayData - Workout day data
+ * @return {Promise<Object>} - Updated program
+ */
+export async function addWorkoutDay(programId, phaseId, dayData) {
+  try {
+    // Get program
+    const program = await DB.getProgram(programId);
+    if (!program) {
+      throw new Error(`Program not found: ${programId}`);
+    }
+    
+    // Find phase
+    const phase = program.phases.find(p => p.id === phaseId);
+    if (!phase) {
+      throw new Error(`Phase not found: ${phaseId}`);
+    }
+    
+    // Create day from template
+    const newDay = {
+      ...WORKOUT_DAY_TEMPLATE,
+      ...dayData,
+      id: Date.now() // Use timestamp as temp ID
+    };
+    
+    // Add to phase
+    phase.days.push(newDay);
+    
+    // Update program
+    await DB.updateProgram(program);
+    
+    // Update current program if it's the same
+    if (currentProgram && currentProgram.id === programId) {
+      currentProgram = program;
+    }
+    
+    return program;
+  } catch (error) {
+    console.error(`Failed to add workout day to phase ${phaseId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Add an exercise to a workout day
+ * @param {number} programId - Program ID
+ * @param {number} phaseId - Phase ID
+ * @param {number} dayId - Day ID
+ * @param {Object} exerciseData - Exercise data
+ * @return {Promise<Object>} - Updated program
+ */
+export async function addExercise(programId, phaseId, dayId, exerciseData) {
+  try {
+    // Get program
+    const program = await DB.getProgram(programId);
+    if (!program) {
+      throw new Error(`Program not found: ${programId}`);
+    }
+    
+    // Find phase
+    const phase = program.phases.find(p => p.id === phaseId);
+    if (!phase) {
+      throw new Error(`Phase not found: ${phaseId}`);
+    }
+    
+    // Find day
+    const day = phase.days.find(d => d.id === dayId);
+    if (!day) {
+      throw new Error(`Day not found: ${dayId}`);
+    }
+    
+    // Add exercise
+    day.exercises.push({
+      id: Date.now(), // Use timestamp as temp ID
+      ...exerciseData
+    });
+    
+    // Update program
+    await DB.updateProgram(program);
+    
+    // Update current program if it's the same
+    if (currentProgram && currentProgram.id === programId) {
+      currentProgram = program;
+    }
+    
+    return program;
+  } catch (error) {
+    console.error(`Failed to add exercise to day ${dayId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Search programs by text
+ * @param {string} query - Search query
+ * @return {Promise<Array>} - Matching programs
+ */
+export async function searchPrograms(query) {
+  try {
+    if (!query) {
+      return await getPrograms();
+    }
+    
+    const programs = await DB.getPrograms();
+    const lowerQuery = query.toLowerCase();
+    
+    return programs.filter(program => {
+      return (
+        program.name.toLowerCase().includes(lowerQuery) ||
+        program.description.toLowerCase().includes(lowerQuery) ||
+        program.type.toLowerCase().includes(lowerQuery) ||
+        program.level.toLowerCase().includes(lowerQuery) ||
+        program.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+      );
+    });
+  } catch (error) {
+    console.error(`Failed to search programs: ${query}`, error);
+    return [];
+  }
+}
+
+/**
+ * Create a default program set for new users
+ * @return {Promise<Array>} - Created programs
+ */
+export async function createDefaultPrograms() {
+  try {
+    const defaultPrograms = [
+      {
+        name: 'Push Pull Legs 6x',
+        description: '6-day split focusing on push, pull and leg workouts',
+        level: 'intermediate',
+        type: 'hypertrophy',
+        daysPerWeek: 6,
+        tags: ['split', 'bodybuilding', 'high volume'],
+        phases: [
+          {
+            name: 'Phase 1 - Base Hypertrophy',
+            weeks: 4,
+            days: [
+              {
+                name: 'Push Day A',
+                tags: ['chest', 'shoulders', 'triceps'],
+                exercises: []
+              },
+              {
+                name: 'Pull Day A',
+                tags: ['back', 'biceps', 'rear delts'],
+                exercises: []
+              },
+              {
+                name: 'Legs Day A',
+                tags: ['quads', 'hamstrings', 'calves'],
+                exercises: []
+              },
+              {
+                name: 'Push Day B',
+                tags: ['chest', 'shoulders', 'triceps'],
+                exercises: []
+              },
+              {
+                name: 'Pull Day B',
+                tags: ['back', 'biceps', 'rear delts'],
+                exercises: []
+              },
+              {
+                name: 'Legs Day B',

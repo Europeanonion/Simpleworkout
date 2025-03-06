@@ -1,0 +1,44 @@
+@import 'base.css';
+@import 'components.css';
+@import 'layout.css';
+@import 'utilities.css';
+
+/* Custom properties */
+:root {
+    --primary: #7F5AF0;
+    --primary-light: #9D7EF9;
+    --primary-dark: #6941C6;
+    --secondary: #10B981;
+    --secondary-light: #34D399;
+    --secondary-dark: #059669;
+    --dark-bg: #16161a;
+    --card-bg: #242629;
+    --card-bg-darker: #1C1C20;
+    --text-primary: #fffffe;
+    --text-secondary: #94a1b2;
+    --text-light: #fffffe;
+    --border-radius: 12px;
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --shadow-sm: 0 2px 10px rgba(0,0,0,0.2);
+    --shadow-md: 0 4px 20px rgba(0,0,0,0.3);
+    --transition: all 0.3s ease;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --green: #10b981;
+    --progress-height: 8px;
+}
+
+/* iOS-specific styles */
+@supports (padding: max(0px)) {
+    .header {
+        padding-left: max(16px, env(safe-area-inset-left));
+        padding-right: max(16px, env(safe-area-inset-right));
+    }
+    
+    .bottom-nav {
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
+    }
+}
